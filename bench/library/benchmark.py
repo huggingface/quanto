@@ -7,6 +7,24 @@ import torch
 from tqdm.auto import tqdm
 
 from quanto.library import disable_extensions
+from quanto.tensor.core import group
+from quanto.tensor.packed import pack_weights
+
+
+def get_udqmm_bench(input_dtype, device, bits):
+    input = torch.rand([128, 128], dtype=input_dtype).to(device)
+    weight = torch.randint(-127, 127, [128, 128], dtype=torch.int8).to(device)
+
+    input_shape = weight.shape
+    grouped_weights = group(weight, axis=0, group_size=int(input_shape[-1] / 4))
+    scale = torch.ones((1, grouped_weights.shape[1]), dtype=input_dtype, device=device) * 0.5
+
+    packed_weights = pack_weights(grouped_weights, bits)
+
+    def bench_fn():
+        return torch.ops.quanto.udqmm(input, packed_weights, scale, bits)
+
+    return bench_fn
 
 
 def get_dqmm_bench(input_dtype, device):
@@ -97,6 +115,7 @@ GET_BENCH_FUNCTIONS = {
     ),
     "unpack_2bit": lambda device: get_unpack_bench(2, device),
     "unpack_4bit": lambda device: get_unpack_bench(4, device),
+    "udqmm_4bit": lambda device: get_udqmm_bench(torch.float16, device, 4),
 }
 
 

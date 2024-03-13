@@ -139,5 +139,11 @@ class QBitsTensor(QTensor):
             zeropoint_kwargs["dtype"] = torch.int8
             zeropoint = op(t._zeropoint, **data_kwargs)
             return QBitsTensor(t._qtype, t._axis, t.size(), t.stride(), data, scale, zeropoint)
+        elif op.overloadpacket is torch.ops.aten.mm:
+            input = args[0]
+            t = args[1]
+            scale = t._scale
+            # TODO: deal with zero points?
+            return torch.ops.quanto.udqmm(input, t, scale, t._bits)
         args, kwargs = pytree.tree_map_only(QBitsTensor, lambda x: x.qtensor(), (args, kwargs or {}))
         return op(*args, **kwargs)
