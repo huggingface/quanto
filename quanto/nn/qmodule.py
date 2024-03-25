@@ -168,17 +168,20 @@ class QModuleMixin(ABC):
                 return t.__class__.__tensor_unflatten__(inner_tensors_dict, meta_dict, None, None)
 
             deserialized_weight = deserialize_tensor_subclass(self.qweight, state_dict, weight_name + ".")
+            device = self.weight.device if self.weight.device.type != "meta" else deserialized_weight.device
             assign_to_params_buffers = local_metadata.get("assign_to_params_buffers", False)
             if assign_to_params_buffers:
                 self.weight = torch.nn.Parameter(deserialized_weight)
             else:
                 if type(self.weight.data) != type(deserialized_weight):
                     # Reloading frozen weights into unfrozen module: move to the correct device and force assignment
-                    self.weight = torch.nn.Parameter(deserialized_weight.to(self.weight.device))
+                    self.weight = torch.nn.Parameter(deserialized_weight.to(device))
                 else:
                     # FIXME: here we should copy frozen weights into frozen module, but this leads to grad error
-                    self.weight = torch.nn.Parameter(deserialized_weight.to(self.weight.device))
-
+                    self.weight = torch.nn.Parameter(deserialized_weight.to(device))
+        # this is needed because we can't load it correctly when the bias is on the meta device
+        if prefix + "bias" in state_dict:
+            self.bias = torch.nn.Parameter(state_dict.pop(prefix + "bias"))
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, False, missing_keys, unexpected_keys, error_msgs
         )

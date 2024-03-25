@@ -2,7 +2,7 @@ import os
 from typing import Dict, Union
 
 import torch
-from safetensors.torch import safe_open, save_file
+from safetensors.torch import _remove_duplicate_names, safe_open, save_file
 
 
 def safe_save(state_dict: Dict[str, Union[torch.Tensor, str]], filename: Union[str, os.PathLike]):
@@ -20,6 +20,14 @@ def safe_save(state_dict: Dict[str, Union[torch.Tensor, str]], filename: Union[s
             tensors[name] = value
         else:
             metadata[name] = value
+
+    to_removes = _remove_duplicate_names(tensors)
+    for kept_name, to_remove_group in to_removes.items():
+        for to_remove in to_remove_group:
+            del tensors[to_remove]
+
+    metadata["format"] = "pt"
+
     save_file(tensors, filename, metadata)
 
 
