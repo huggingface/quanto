@@ -8,7 +8,7 @@ from datasets import load_dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 from transformers.pipelines.pt_utils import KeyDataset
 
-from quanto import Calibration, freeze, qint4, qint8, quantize
+from quanto import Calibration, freeze, qint4, qint8, qfloat8, qint2, quantize
 
 
 def evaluate_model(model, tokenizer, dataset, device, batch_size):
@@ -22,7 +22,7 @@ def evaluate_model(model, tokenizer, dataset, device, batch_size):
 
 
 def keyword_to_itype(k):
-    return {"none": None, "int8": qint8, "int4": qint4}[k]
+    return {"none": None, "int8": qint8, "int4": qint4, "int2": qint2, "float8": qfloat8}[k]
 
 
 def main():
@@ -36,8 +36,8 @@ def main():
     )
     parser.add_argument("--samples", type=int, default=872, help="The number of sst2 samples to use for evaluation.")
     parser.add_argument("--batch_size", type=int, default=100, help="The batch size to use for evaluation.")
-    parser.add_argument("--weights", type=str, default="int8", choices=["int4", "int8"])
-    parser.add_argument("--activations", type=str, default="int8", choices=["none", "int8"])
+    parser.add_argument("--weights", type=str, default="int8", choices=["int4", "int8", "int2", "float8"])
+    parser.add_argument("--activations", type=str, default="int8", choices=["none", "int8", "float8", "int4", "int2"])
     parser.add_argument("--device", type=str, default=None, help="The device to use for evaluation.")
     args = parser.parse_args()
 
@@ -82,3 +82,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
