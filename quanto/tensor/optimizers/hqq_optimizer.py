@@ -20,6 +20,52 @@ def shrink_lp_op(x: torch.Tensor, beta: float, lp_norm: float) -> torch.Tensor:
         )
 
 
+def optimize_weights_proximal_legacy(
+    tensor: torch.Tensor,
+    scale: torch.Tensor,
+    zero: torch.Tensor,
+    min_max: list,
+    axis: int = 0,
+    device: str = "cuda",
+    opt_params: dict = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20},
+    verbose: bool = False,
+) -> tuple:
+    lp_norm, beta, kappa, iters = (
+        opt_params["lp_norm"],
+        opt_params["beta"],
+        opt_params["kappa"],
+        opt_params["iters"],
+    )
+
+    device = torch.device(device)
+    dtype = torch.float16 if (device.type == "cuda") else torch.float32
+    W_f = tensor.to(dtype).to(device)
+    scale = scale.to(dtype).to(device)
+    zero = zero.to(dtype).to(device)
+
+    best_error = 1e4
+    for i in range(iters):
+        W_q = torch.round(W_f * scale + zero).clamp(min_max[0], min_max[1])
+        W_r = (W_q - zero) / scale
+        W_e = shrink_lp_op(W_f - W_r, beta, lp_norm)
+        zero = torch.mean(W_q - (W_f - W_e) * scale, axis=axis, keepdim=True)
+        beta *= kappa
+
+        current_error = float(torch.abs(W_f - W_r).mean())
+        if verbose:
+            print(f"{i} {current_error:.6f}")
+        if current_error < best_error:
+            best_error = current_error
+        else:
+            break
+
+    scale = scale.to(tensor.device)
+    zero = zero.to(tensor.device)
+    del W_f, W_q, W_r, W_e
+
+    return scale, zero
+
+
 class HqqOptimizer(MaxOptimizer):
 
     def __init__(
@@ -40,6 +86,11 @@ class HqqOptimizer(MaxOptimizer):
         self, base: torch.Tensor, bits: int, axis: int
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         scale, zeropoint = super().optimize(base, bits, axis)
+        _, zeropoint = optimize_weights_proximal_legacy(
+            base, 1 / scale, zeropoint, min_max=[0, 2**bits - 1], device="cpu", verbose=True
+        )
+        zeropoint = torch.round(zeropoint).to(torch.int8)
+        return scale, zeropoint
         best_error = 1e4
         beta = self.beta
         qtype = qint2 if bits == 2 else qint4
@@ -49,7 +100,6 @@ class HqqOptimizer(MaxOptimizer):
             e = shrink_lp_op(error, beta, self.lp_norm)
             mean_axis = 0 if axis == -1 else -1
             zeropoint = torch.mean(base_q._data - (base - e) / scale, axis=mean_axis, keepdim=True)
-            zeropoint = torch.round(zeropoint).to(torch.int8)
             beta *= self.kappa
 
             current_error = float(torch.abs(base - base_q).mean())
@@ -59,4 +109,5 @@ class HqqOptimizer(MaxOptimizer):
                 best_error = current_error
             else:
                 break
+        zeropoint = torch.round(zeropoint).to(torch.int8)
         return scale, zeropoint
