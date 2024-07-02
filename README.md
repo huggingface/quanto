@@ -164,6 +164,8 @@ When freezing a model, its float weights are replaced by quantized integer weigh
 
 ```python
 freeze(model)
+# saving weights after quantization is applied
+model.save_pretrained(model_path)
 ```
 
 Please refer to the [examples](https://github.com/huggingface/quanto/tree/main/examples) for instantiations of that workflow.
